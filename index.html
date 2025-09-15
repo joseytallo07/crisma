@@ -127,6 +127,7 @@ function openTurma(tid){
     } else turmaFoto.style.display = 'none';
   });
 
+  // Encontros
   db.collection('encontros').where('turmaId','==',tid).orderBy('dataISO','desc')
     .onSnapshot(snap => {
       encontrosArea.innerHTML = '';
@@ -137,11 +138,10 @@ function openTurma(tid){
                          <button data-id="${ed.id}" class="markBtn">Marcar presença</button>`;
         encontrosArea.appendChild(div);
       });
-      [...document.querySelectorAll('.markBtn')].forEach(b => {
-        b.onclick = ()=> markPresenca(b.dataset.id);
-      });
+      [...document.querySelectorAll('.markBtn')].forEach(b => b.onclick = ()=>markPresenca(b.dataset.id));
     });
 
+  // Alunos
   db.collection('alunos').where('turmaId','==',tid).orderBy('nome')
     .onSnapshot(snap => {
       alunosTableBody.innerHTML = '';
@@ -170,7 +170,6 @@ function openTurma(tid){
             const faltas = presSnap.size;
             const cell = document.querySelector(`.faltasCell[data-id='${alunoId}']`);
             if(cell) cell.textContent = faltas;
-            // alerta 4+ faltas
             let div = alertsDiv.querySelector(`.alert[data-id='${alunoId}']`);
             if(faltas >=4){
               if(!div){
