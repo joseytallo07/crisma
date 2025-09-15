@@ -36,15 +36,15 @@ th,td { border:1px solid #ccc; padding:5px; text-align:left; }
       <h2>Painel</h2>
       <div class="row">
         <button id="btnNewTurma">Criar Turma</button>
-        <button id="btnNewAluno">Adicionar Aluno</button>
-        <button id="btnNovoEncontro">Criar Encontro</button>
+        <button id="btnNewAluno">Adicionar Crismando</button>
+        <button id="btnNovoEncontro">Registrar encontro </button>
         <button id="btnRelatorio">Relatórios (CSV)</button>
       </div>
       <div id="alerts"></div>
     </div>
 
     <div class="card">
-      <h3>Suas Turmas</h3>
+      <h3>Turmas</h3>
       <ul id="turmaList"></ul>
     </div>
 
@@ -52,7 +52,7 @@ th,td { border:1px solid #ccc; padding:5px; text-align:left; }
       <img id="turmaFoto" src="" alt="Foto da turma">
       <h3 id="turmaTitle"></h3>
       <div id="encontrosArea"></div>
-      <h4>Alunos</h4>
+      <h4>Crismandos</h4>
       <table id="alunosTable">
         <thead><tr><th>Nome</th><th>Faltas</th><th>Ações</th></tr></thead>
         <tbody></tbody>
@@ -62,7 +62,7 @@ th,td { border:1px solid #ccc; padding:5px; text-align:left; }
 </main>
 
 <script>
-// === FIREBASE CONFIGURADO ===
+// === FIREBASE CONFIG ===
 const firebaseConfig = {
   apiKey: "AIzaSyC4GsCM_rU8Z7MwCMNvLFtZKB5wFdIxQo",
   authDomain: "web-crisma.firebaseapp.com",
@@ -86,7 +86,7 @@ const alunosTableBody = $('alunosTable').querySelector('tbody');
 const alertsDiv = $('alerts');
 let currentTurmaId = null;
 
-// === FUNÇÕES PRINCIPAIS ===
+// === CRIAR TURMA ===
 $('btnNewTurma').onclick = async ()=>{
   const s = prompt('Senha para criar turma:');
   if(s!==senha){ alert('Senha incorreta'); return; }
@@ -96,16 +96,26 @@ $('btnNewTurma').onclick = async ()=>{
   await db.collection('turmas').add({nome, fotoURL: foto||'', createdAt: new Date().toISOString()});
 };
 
-$('btnNewAluno').onclick = async ()=>{
+// === ADICIONAR ALUNO ===
+$('btnNewAluno').onclick = async () => {
   if(!currentTurmaId){ alert('Abra uma turma'); return; }
   const s = prompt('Senha para adicionar aluno:');
-  if(s!==senha){ alert('Senha incorreta'); return; }
+  if(s !== senha){ alert('Senha incorreta'); return; }
   const nome = prompt('Nome do aluno');
   if(!nome) return;
-  const resp = prompt('Responsável (opcional)')||'';
-  await db.collection('alunos').add({nome, responsavel: resp, turmaId: currentTurmaId, createdAt: new Date().toISOString()});
+  const resp = prompt('Responsável (opcional)') || '';
+  
+  await db.collection('alunos').add({
+    nome,
+    responsavel: resp,
+    turmaId: currentTurmaId,
+    createdAt: new Date().toISOString()
+  });
+  
+  openTurma(currentTurmaId); // Atualiza a tabela imediatamente
 };
 
+// === CRIAR ENCONTRO ===
 $('btnNovoEncontro').onclick = async ()=>{
   if(!currentTurmaId){ alert('Abra uma turma'); return; }
   const data = prompt('Data do encontro (DD/MM/AAAA)');
@@ -115,16 +125,19 @@ $('btnNovoEncontro').onclick = async ()=>{
   await db.collection('encontros').add({turmaId: currentTurmaId, dataISO: iso, createdAt: new Date().toISOString()});
 };
 
+// === ABRIR TURMA ===
 function openTurma(tid){
   currentTurmaId = tid;
   turmaView.style.display='block';
 
+  // Informações da turma
   db.collection('turmas').doc(tid).onSnapshot(tdoc=>{
     turmaTitle.textContent = tdoc.data().nome;
-    if(tdoc.data().fotoURL){ turmaFoto.src=tdoc.data().fotoURL; turmaFoto.style.display='block'; }
+    if(tdoc.data().fotoURL){ turmaFoto.src = tdoc.data().fotoURL; turmaFoto.style.display='block'; }
     else turmaFoto.style.display='none';
   });
 
+  // Encontros
   db.collection('encontros').where('turmaId','==',tid).orderBy('dataISO','desc')
     .onSnapshot(snap=>{
       encontrosArea.innerHTML='';
@@ -137,6 +150,7 @@ function openTurma(tid){
       [...document.querySelectorAll('.markBtn')].forEach(b=>b.onclick=()=>markPresenca(b.dataset.id));
     });
 
+  // Alunos
   db.collection('alunos').where('turmaId','==',tid).orderBy('nome')
     .onSnapshot(snap=>{
       alunosTableBody.innerHTML='';
@@ -147,6 +161,7 @@ function openTurma(tid){
         alunosTableBody.appendChild(tr);
       });
 
+      // Excluir aluno
       [...document.querySelectorAll('.delAlunoBtn')].forEach(b=>{
         b.onclick=async ()=>{
           const s = prompt('Senha para excluir aluno:');
@@ -155,8 +170,9 @@ function openTurma(tid){
         };
       });
 
+      // Faltas e alertas
       snap.forEach(a=>{
-        const alunoId=a.id;
+        const alunoId = a.id;
         db.collection('presencas').where('alunoId','==',alunoId).where('status','==','F')
           .onSnapshot(presSnap=>{
             const faltas = presSnap.size;
@@ -172,6 +188,7 @@ function openTurma(tid){
     });
 }
 
+// === MARCAR PRESENÇA ===
 async function markPresenca(encontroId){
   const alSnap = await db.collection('alunos').where('turmaId','==',currentTurmaId).orderBy('nome').get();
   for(const a of alSnap.docs){
@@ -183,7 +200,7 @@ async function markPresenca(encontroId){
   alert('Presenças registradas.');
 }
 
-// Excluir Turma
+// === EXCLUIR TURMA ===
 turmaList.onclick = async e=>{
   if(e.target.tagName==='BUTTON' && e.target.dataset.id){
     const tid = e.target.dataset.id;
@@ -196,7 +213,7 @@ turmaList.onclick = async e=>{
   }
 };
 
-// Listar turmas em tempo real
+// === LISTAR TURMAS EM TEMPO REAL ===
 db.collection('turmas').orderBy('createdAt','desc').onSnapshot(snap=>{
   turmaList.innerHTML='';
   snap.forEach(doc=>{
