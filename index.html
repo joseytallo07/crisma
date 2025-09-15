@@ -1,0 +1,269 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width,initial-scale=1" />
+<title>Catequese - Controle de Turmas e Faltas</title>
+<style>
+body { font-family: sans-serif; margin:0; padding:0; background:#f5f5f5; }
+.topbar { background:#3f51b5; color:white; padding:10px; display:flex; align-items:center; gap:10px; }
+.brand { height:40px; }
+.container { padding:20px; max-width:900px; margin:auto; }
+.card { background:white; padding:15px; margin-bottom:15px; border-radius:8px; box-shadow:0 2px 5px rgba(0,0,0,0.1); }
+.row { display:flex; gap:10px; flex-wrap:wrap; margin-bottom:10px; }
+button { padding:5px 10px; cursor:pointer; border:none; border-radius:4px; background:#3f51b5; color:white; }
+ul { list-style:none; padding:0; }
+li { padding:5px 0; display:flex; justify-content:space-between; align-items:center; }
+li span { cursor:pointer; }
+table { width:100%; border-collapse:collapse; margin-top:10px; }
+th,td { border:1px solid #ccc; padding:5px; text-align:left; }
+.alert { padding:5px; margin-bottom:5px; border-radius:4px; }
+.warn { background:#ffcccc; }
+</style>
+<script src="https://www.gstatic.com/firebasejs/9.22.2/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/9.22.2/firebase-firestore-compat.js"></script>
+</head>
+<body>
+
+<header class="topbar">
+  <img src="assets/brand.png" alt="Identidade" class="brand" />
+  <h1>Catequese de Crisma</h1>
+</header>
+
+<main class="container">
+  <section id="app">
+    <div class="card">
+      <h2>Painel</h2>
+      <div class="row">
+        <button id="btnNewTurma">Criar Turma</button>
+        <button id="btnNewAluno">Adicionar Aluno</button>
+        <button id="btnNovoEncontro">Criar Encontro</button>
+        <button id="btnRelatorio">Relatórios (CSV)</button>
+      </div>
+      <div id="alerts"></div>
+    </div>
+
+    <div class="card">
+      <h3>Suas Turmas</h3>
+      <ul id="turmaList"></ul>
+    </div>
+
+    <div class="card" id="turmaView" style="display:none;">
+      <h3 id="turmaTitle"></h3>
+      <div id="encontrosArea"></div>
+      <h4>Alunos</h4>
+      <table id="alunosTable">
+        <thead><tr><th>Nome</th><th>Faltas</th><th>Ações</th></tr></thead>
+        <tbody></tbody>
+      </table>
+    </div>
+  </section>
+</main>
+
+<script>
+const firebaseConfig = {
+  apiKey: "PASTE_API_KEY",
+  authDomain: "PASTE_AUTH_DOMAIN",
+  projectId: "PASTE_PROJECT_ID",
+};
+firebase.initializeApp(firebaseConfig);
+const db = firebase.firestore();
+
+const senha = "212121";
+
+const $ = id => document.getElementById(id);
+const turmaList = $('turmaList');
+const turmaView = $('turmaView');
+const turmaTitle = $('turmaTitle');
+const encontrosArea = $('encontrosArea');
+const alunosTableBody = $('alunosTable').querySelector('tbody');
+const alertsDiv = $('alerts');
+
+let currentTurmaId = null;
+
+// Criar turma
+$('btnNewTurma').addEventListener('click', async () => {
+  const s = prompt('Digite a senha para criar turma:');
+  if(s !== senha){ alert('Senha incorreta!'); return; }
+  const nome = prompt('Nome da turma (ex: Crisma Sábado 15h)');
+  if(!nome) return;
+  await db.collection('turmas').add({ nome, createdAt: new Date().toISOString() });
+});
+
+// Adicionar aluno
+$('btnNewAluno').addEventListener('click', async () => {
+  if(!currentTurmaId){ alert('Abra uma turma para adicionar alunos'); return; }
+  const s = prompt('Digite a senha para adicionar aluno:');
+  if(s !== senha){ alert('Senha incorreta!'); return; }
+  const nome = prompt('Nome do aluno'); 
+  if(!nome) return;
+  const resp = prompt('Nome do responsável (opcional)') || '';
+  await db.collection('alunos').add({ nome, responsavel: resp, turmaId: currentTurmaId, createdAt: new Date().toISOString() });
+});
+
+// Criar encontro
+$('btnNovoEncontro').addEventListener('click', async () => {
+  if(!currentTurmaId){ alert('Abra uma turma para criar encontro'); return; }
+  const data = prompt('Data do encontro (DD/MM/AAAA)');
+  if(!data) return;
+  const parts = data.split('/');
+  const iso = new Date(parts[2], parts[1]-1, parts[0]).toISOString();
+  await db.collection('encontros').add({ turmaId: currentTurmaId, dataISO: iso, createdAt: new Date().toISOString() });
+});
+
+// Função abrir turma
+function openTurma(tid){
+  currentTurmaId = tid;
+  turmaView.style.display = 'block';
+
+  db.collection('turmas').doc(tid).onSnapshot(tdoc => {
+    turmaTitle.textContent = tdoc.data().nome || 'Turma';
+    turmaTitle.onclick = async ()=>{
+      const s = prompt('Digite a senha para alterar o nome da turma:');
+      if(s !== senha){ alert('Senha incorreta!'); return; }
+      const novo = prompt('Novo nome da turma:', tdoc.data().nome);
+      if(novo) await db.collection('turmas').doc(tid).update({ nome: novo });
+    };
+  });
+
+  db.collection('encontros').where('turmaId','==',tid).orderBy('dataISO','desc')
+    .onSnapshot(snap => {
+      encontrosArea.innerHTML = '';
+      snap.forEach(ed => {
+        const d = new Date(ed.data().dataISO);
+        const div = document.createElement('div');
+        div.innerHTML = `<strong>${d.toLocaleDateString()}</strong>
+                         <button data-id="${ed.id}" class="markBtn">Marcar presença</button>`;
+        encontrosArea.appendChild(div);
+      });
+      [...document.querySelectorAll('.markBtn')].forEach(b => b.addEventListener('click', () => markPresenca(b.dataset.id)));
+    });
+
+  db.collection('alunos').where('turmaId','==',tid).orderBy('nome')
+    .onSnapshot(snap => {
+      alunosTableBody.innerHTML = '';
+      snap.forEach(a => {
+        const data = a.data();
+        const tr = document.createElement('tr');
+        tr.innerHTML = `<td class="editAluno" data-id="${a.id}">${data.nome}</td>
+                        <td class="faltasCell" data-id="${a.id}">0</td>
+                        <td>
+                          <button data-id="${a.id}" class="delAlunoBtn">Excluir</button>
+                        </td>`;
+        alunosTableBody.appendChild(tr);
+      });
+
+      [...document.querySelectorAll('.editAluno')].forEach(td=>{
+        td.onclick = async ()=>{
+          const s = prompt('Digite a senha para alterar o nome do aluno:');
+          if(s !== senha){ alert('Senha incorreta!'); return; }
+          const novo = prompt('Novo nome do aluno:', td.textContent);
+          if(novo) await db.collection('alunos').doc(td.dataset.id).update({ nome: novo });
+        };
+      });
+
+      [...document.querySelectorAll('.delAlunoBtn')].forEach(b => {
+        b.addEventListener('click', async () => {
+          const s = prompt('Digite a senha para excluir aluno:');
+          if(s !== senha){ alert('Senha incorreta!'); return; }
+          await db.collection('alunos').doc(b.dataset.id).delete();
+        });
+      });
+
+      observeFaltas(tid);
+    });
+}
+
+// Observa faltas em tempo real
+function observeFaltas(tid){
+  alertsDiv.innerHTML = '';
+  db.collection('alunos').where('turmaId','==',tid).onSnapshot(alSnap => {
+    alertsDiv.innerHTML = '';
+    alSnap.forEach(a => {
+      const alunoId = a.id;
+      const cell = document.querySelector(`.faltasCell[data-id='${alunoId}']`);
+      db.collection('presencas').where('alunoId','==',alunoId).where('status','==','F')
+        .onSnapshot(presSnap => {
+          const faltas = presSnap.size;
+          if(cell) cell.textContent = faltas;
+          if(faltas >= 4){
+            if(!alertsDiv.querySelector(`.alert[data-id='${alunoId}']`)){
+              const div = document.createElement('div');
+              div.className='alert warn';
+              div.dataset.id = alunoId;
+              div.innerHTML = `<strong>Atenção:</strong> ${a.data().nome} tem ${faltas} faltas. Entre em contato com o responsável.`;
+              alertsDiv.appendChild(div);
+            } else {
+              const div = alertsDiv.querySelector(`.alert[data-id='${alunoId}']`);
+              div.innerHTML = `<strong>Atenção:</strong> ${a.data().nome} tem ${faltas} faltas. Entre em contato com o responsável.`;
+            }
+          } else {
+            const div = alertsDiv.querySelector(`.alert[data-id='${alunoId}']`);
+            if(div) div.remove();
+          }
+        });
+    });
+  });
+}
+
+// Marcar presença
+async function markPresenca(encontroId){
+  const alSnap = await db.collection('alunos').where('turmaId','==',currentTurmaId).orderBy('nome').get();
+  const respostas = {};
+  for(const a of alSnap.docs){
+    const nome = a.data().nome;
+    const r = prompt(`Status para ${nome} (P/F/J). Deixe em branco para P.`,'P');
+    respostas[a.id] = r ? r.toUpperCase() : 'P';
+  }
+  for(const id of Object.keys(respostas)){
+    await db.collection('presencas').add({ alunoId:id, encontroId, status:respostas[id], createdAt:new Date().toISOString() });
+  }
+  alert('Presenças registradas.');
+}
+
+// Relatório CSV
+$('btnRelatorio').addEventListener('click', async ()=>{
+  if(!currentTurmaId){ alert('Abra uma turma antes'); return; }
+  const rows = [['Aluno','FaltasNãoJustificadas','FaltasJustificadas']];
+  const alSnap = await db.collection('alunos').where('turmaId','==',currentTurmaId).get();
+  for(const a of alSnap.docs){
+    const id = a.id;
+    const nome = a.data().nome;
+    const fN = (await db.collection('presencas').where('alunoId','==',id).where('status','==','F').get()).size;
+    const fJ = (await db.collection('presencas').where('alunoId','==',id).where('status','==','J').get()).size;
+    rows.push([nome,String(fN),String(fJ)]);
+  }
+  const csv = rows.map(r=>r.map(c=>`"${c.replace(/"/g,'""')}"`).join(',')).join('\n');
+  const blob = new Blob([csv],{type:'text/csv;charset=utf-8;'});
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a'); a.href=url; a.download='relatorio_turma.csv'; a.click();
+});
+
+// **LISTA DE TURMAS EM TEMPO REAL**
+db.collection('turmas').orderBy('createdAt','desc').onSnapshot(snap => {
+  turmaList.innerHTML = '';
+  snap.forEach(doc=>{
+    const t = doc.data();
+    const li = document.createElement('li');
+    li.innerHTML = `<span data-id="${doc.id}">${t.nome}</span>
+                    <button data-id="${doc.id}" class="delTurmaBtn">Excluir</button>`;
+    turmaList.appendChild(li);
+  });
+
+  // Abrir turma
+  [...document.querySelectorAll('#turmaList span')].forEach(span=>{
+    span.onclick = ()=> openTurma(span.dataset.id);
+  });
+
+  // Excluir turma
+  [...document.querySelectorAll('.delTurmaBtn')].forEach(b=>{
+    b.onclick = async ()=>{
+      const s = prompt('Digite a senha para excluir a turma:');
+      if(s !== senha){ alert('Senha incorreta!'); return; }
+      await db.collection('turmas').doc(b.dataset.id).delete();
+    };
+  });
+});
+</script>
+</body>
+</html>
