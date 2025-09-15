@@ -35,7 +35,6 @@ th,td { border:1px solid #ccc; padding:5px; text-align:left; }
         <button id="btnNewTurma">Criar Turma</button>
         <button id="btnNewAluno">Adicionar Crismando</button>
         <button id="btnNovoEncontro">Registrar Encontro</button>
-        <button id="btnRelatorio">Relatórios (CSV)</button>
       </div>
       <div id="alerts"></div>
     </div>
@@ -58,7 +57,7 @@ th,td { border:1px solid #ccc; padding:5px; text-align:left; }
 </main>
 
 <script>
-// FIREBASE CONFIG
+// CONFIG FIREBASE
 const firebaseConfig = {
   apiKey: "AIzaSyC4GsCM_rU8Z7MwCMNvLFtZKB5wFdIxQo",
   authDomain: "web-crisma.firebaseapp.com",
@@ -84,32 +83,27 @@ let currentTurmaId = null;
 // CRIAR TURMA
 $('btnNewTurma').onclick = async () => {
   const s = prompt('Senha para criar turma:');
-  if(s !== senha){ alert('Senha incorreta'); return; }
-  const nome = prompt('Nome da turma:');
+  if(s!==senha){ alert('Senha incorreta'); return; }
+  const nome = prompt('Nome da turma');
   if(!nome) return;
   await db.collection('turmas').add({nome, createdAt: new Date().toISOString()});
 };
 
 // ADICIONAR CRISMANDO
 $('btnNewAluno').onclick = async () => {
-  if(!currentTurmaId){ alert('Abra uma turma'); return; }
+  if(!currentTurmaId){ alert('Abra uma turma primeiro'); return; }
   const s = prompt('Senha para adicionar crismando:');
-  if(s !== senha){ alert('Senha incorreta'); return; }
-  const nome = prompt('Nome do crismando:');
+  if(s!==senha){ alert('Senha incorreta'); return; }
+  const nome = prompt('Nome do crismando');
   if(!nome) return;
-  const resp = prompt('Responsável (opcional)') || '';
-  await db.collection('alunos').add({
-    nome,
-    responsavel: resp,
-    turmaId: currentTurmaId,
-    createdAt: new Date().toISOString()
-  });
+  const responsavel = prompt('Responsável (opcional)') || '';
+  await db.collection('alunos').add({nome, responsavel, turmaId: currentTurmaId, createdAt: new Date().toISOString()});
 };
 
-// CRIAR ENCONTRO
+// REGISTRAR ENCONTRO
 $('btnNovoEncontro').onclick = async () => {
-  if(!currentTurmaId){ alert('Abra uma turma'); return; }
-  const data = prompt('Data do encontro (DD/MM/AAAA):');
+  if(!currentTurmaId){ alert('Abra uma turma primeiro'); return; }
+  const data = prompt('Data do encontro (DD/MM/AAAA)');
   if(!data) return;
   const parts = data.split('/');
   const iso = new Date(parts[2], parts[1]-1, parts[0]).toISOString();
@@ -121,62 +115,53 @@ function openTurma(tid){
   currentTurmaId = tid;
   turmaView.style.display='block';
 
-  // Info da turma
-  db.collection('turmas').doc(tid).onSnapshot(doc => {
-    if(!doc.exists) return;
+  db.collection('turmas').doc(tid).onSnapshot(doc=>{
     turmaTitle.textContent = doc.data().nome;
   });
 
   // Encontros
   db.collection('encontros').where('turmaId','==',tid).orderBy('dataISO','desc')
-    .onSnapshot(snap => {
-      encontrosArea.innerHTML = '';
-      snap.forEach(ed => {
+    .onSnapshot(snap=>{
+      encontrosArea.innerHTML='';
+      snap.forEach(ed=>{
         const d = new Date(ed.data().dataISO);
         const div = document.createElement('div');
         div.innerHTML = `<strong>${d.toLocaleDateString()}</strong> <button data-id="${ed.id}" class="markBtn">Marcar presença</button>`;
         encontrosArea.appendChild(div);
       });
-      [...document.querySelectorAll('.markBtn')].forEach(b => b.onclick = () => markPresenca(b.dataset.id));
+      [...document.querySelectorAll('.markBtn')].forEach(b=>b.onclick=()=>markPresenca(b.dataset.id));
     });
 
   // Crismandos
   db.collection('alunos').where('turmaId','==',tid).orderBy('nome')
-    .onSnapshot(snap => {
-      alunosTableBody.innerHTML = '';
-      snap.forEach(a => {
+    .onSnapshot(snap=>{
+      alunosTableBody.innerHTML='';
+      snap.forEach(a=>{
         const data = a.data();
         const tr = document.createElement('tr');
         tr.innerHTML = `<td>${data.nome}</td><td class="faltasCell" data-id="${a.id}">0</td><td><button data-id="${a.id}" class="delAlunoBtn">Excluir</button></td>`;
         alunosTableBody.appendChild(tr);
       });
 
-      // Excluir crismando
-      [...document.querySelectorAll('.delAlunoBtn')].forEach(b => {
+      [...document.querySelectorAll('.delAlunoBtn')].forEach(b=>{
         b.onclick = async () => {
           const s = prompt('Senha para excluir crismando:');
-          if(s !== senha){ alert('Senha incorreta'); return; }
+          if(s!==senha){ alert('Senha incorreta'); return; }
           await db.collection('alunos').doc(b.dataset.id).delete();
         };
       });
 
-      // Atualiza faltas
-      snap.forEach(a => {
+      // Faltas
+      snap.forEach(a=>{
         const alunoId = a.id;
         db.collection('presencas').where('alunoId','==',alunoId).where('status','==','F')
-          .onSnapshot(presSnap => {
+          .onSnapshot(presSnap=>{
             const faltas = presSnap.size;
             const cell = document.querySelector(`.faltasCell[data-id='${alunoId}']`);
             if(cell) cell.textContent = faltas;
-
             let div = alertsDiv.querySelector(`.alert[data-id='${alunoId}']`);
             if(faltas>=4){
-              if(!div){ 
-                div = document.createElement('div'); 
-                div.className='alert warn'; 
-                div.dataset.id=alunoId; 
-                alertsDiv.appendChild(div);
-              }
+              if(!div){ div=document.createElement('div'); div.className='alert warn'; div.dataset.id=alunoId; alertsDiv.appendChild(div); }
               div.innerHTML = `<strong>Atenção:</strong> ${a.data().nome} tem ${faltas} faltas.`;
             } else if(div){ div.remove(); }
           });
@@ -186,33 +171,32 @@ function openTurma(tid){
 
 // MARCAR PRESENÇA
 async function markPresenca(encontroId){
-  const alSnap = await db.collection('alunos').where('turmaId','==',currentTurmaId).orderBy('nome').get();
-  for(const a of alSnap.docs){
-    const nome = a.data().nome;
-    const r = prompt(`Status para ${nome} (P/F/J). Deixe em branco para P.`,'P');
-    const status = r ? r.toUpperCase() : 'P';
-    await db.collection('presencas').add({encontroId, alunoId: a.id, status, createdAt: new Date().toISOString()});
+  const snap = await db.collection('alunos').where('turmaId','==',currentTurmaId).orderBy('nome').get();
+  for(const a of snap.docs){
+    const r = prompt(`Status para ${a.data().nome} (P/F/J). Deixe em branco para P.`, 'P');
+    const status = r? r.toUpperCase():'P';
+    await db.collection('presencas').add({encontroId, alunoId:a.id, status, createdAt:new Date().toISOString()});
   }
   alert('Presenças registradas.');
 }
 
 // EXCLUIR TURMA
-turmaList.onclick = async e => {
+turmaList.onclick = async e=>{
   if(e.target.tagName==='BUTTON' && e.target.dataset.id){
     const tid = e.target.dataset.id;
     if(e.target.textContent==='Excluir'){
       const s = prompt('Senha para excluir turma:');
-      if(s !== senha){ alert('Senha incorreta'); return; }
+      if(s!==senha){ alert('Senha incorreta'); return; }
       await db.collection('turmas').doc(tid).delete();
       turmaView.style.display='none';
     } else openTurma(tid);
   }
 };
 
-// LISTAR TURMAS EM TEMPO REAL
-db.collection('turmas').orderBy('createdAt','desc').onSnapshot(snap => {
-  turmaList.innerHTML = '';
-  snap.forEach(doc => {
+// LISTAR TURMAS
+db.collection('turmas').orderBy('createdAt','desc').onSnapshot(snap=>{
+  turmaList.innerHTML='';
+  snap.forEach(doc=>{
     const t = doc.data();
     const li = document.createElement('li');
     li.innerHTML = `<strong>${t.nome}</strong>
