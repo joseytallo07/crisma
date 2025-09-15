@@ -1,27 +1,27 @@
-<!DOCTYPE html>
+<!doctype html>
 <html lang="pt-BR">
 <head>
-<meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Catequese - Controle de Turmas e Faltas</title>
-<style>
-body { font-family: Arial, sans-serif; background:#f5f5f5; margin:0; padding:0; }
-header { background:#6200ea; color:#fff; padding:10px; text-align:center; }
-.container { max-width:900px; margin:20px auto; padding:10px; }
-.card { background:#fff; padding:15px; margin-bottom:15px; border-radius:8px; box-shadow:0 2px 5px rgba(0,0,0,0.1); }
-button { margin:5px; padding:8px 12px; border:none; border-radius:5px; color:#fff; cursor:pointer; }
-.btn-presenca { background:green; }
-.btn-falta { background:red; }
-button:hover { opacity:0.8; }
-table { width:100%; border-collapse:collapse; margin-top:10px; }
-th, td { border:1px solid #ddd; padding:8px; text-align:left; }
-th { background:#eee; }
-ul { list-style:none; padding:0; }
-li { padding:5px 0; cursor:pointer; display:flex; justify-content:space-between; align-items:center; }
-.alert { padding:5px; margin-bottom:5px; border-radius:4px; background:#ffcccc; }
-</style>
-<script src="https://www.gstatic.com/firebasejs/9.22.2/firebase-app-compat.js"></script>
-<script src="https://www.gstatic.com/firebasejs/9.22.2/firebase-firestore-compat.js"></script>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Catequese - Controle de Turmas e Faltas</title>
+  <style>
+    body { font-family: Arial, sans-serif; background:#f5f5f5; margin:0; padding:0; }
+    header { background:#6200ea; color:#fff; padding:10px; text-align:center; }
+    .container { max-width:900px; margin:20px auto; padding:10px; }
+    .card { background:#fff; padding:15px; margin-bottom:15px; border-radius:8px; box-shadow:0 2px 5px rgba(0,0,0,0.1); }
+    button { margin:5px; padding:8px 12px; border:none; border-radius:5px; cursor:pointer; color:#fff; }
+    button:hover { opacity:0.9; }
+    .btn-presenca { background:green; }
+    .btn-falta { background:red; }
+    table { width:100%; border-collapse:collapse; margin-top:10px; }
+    th, td { border:1px solid #ddd; padding:8px; text-align:left; }
+    th { background:#eee; }
+    ul { list-style:none; padding:0; }
+    li { padding:5px 0; cursor:pointer; }
+  </style>
+
+  <script src="https://www.gstatic.com/firebasejs/9.22.2/firebase-app-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/9.22.2/firebase-firestore-compat.js"></script>
 </head>
 <body>
 
@@ -31,11 +31,10 @@ li { padding:5px 0; cursor:pointer; display:flex; justify-content:space-between;
 
 <main class="container">
   <section id="app">
-
     <div class="card">
       <h2>Painel</h2>
       <button id="btnNewTurma">Criar Turma</button>
-      <button id="btnNewAluno">Adicionar Crismando</button>
+      <button id="btnNewAluno">Adicionar Aluno</button>
     </div>
 
     <div class="card">
@@ -46,7 +45,7 @@ li { padding:5px 0; cursor:pointer; display:flex; justify-content:space-between;
     <div class="card" id="turmaView" style="display:none;">
       <h3 id="turmaTitle"></h3>
       <button id="btnVoltar">Voltar</button>
-      <h4>Crismandos</h4>
+      <h4>Alunos</h4>
       <table>
         <thead>
           <tr><th>Nome</th><th>Presenças</th><th>Faltas</th><th>Ações</th></tr>
@@ -54,126 +53,114 @@ li { padding:5px 0; cursor:pointer; display:flex; justify-content:space-between;
         <tbody id="alunosTable"></tbody>
       </table>
     </div>
-
   </section>
 </main>
 
 <script>
-// Firebase config
-const firebaseConfig = {
-  apiKey: "AIzaSyC4GsCM_rU8Z7MwCMNvLFtZKB5wFdIxQo",
-  authDomain: "web-crisma.firebaseapp.com",
-  projectId: "web-crisma",
-  storageBucket: "web-crisma.appspot.com",
-  messagingSenderId: "153889070231",
-  appId: "1:153889070231:web:687e04924a9e05cae51dd2"
-};
-firebase.initializeApp(firebaseConfig);
-const db = firebase.firestore();
+  // === CONFIG FIREBASE ===
+  const firebaseConfig = {
+    apiKey: "AIzaSyC4GsCM_rU8Z7MwCMNvLFtZKB5wFdIxQo",
+    authDomain: "web-crisma.firebaseapp.com",
+    projectId: "web-crisma",
+    storageBucket: "web-crisma.appspot.com",
+    messagingSenderId: "153889070231",
+    appId: "1:153889070231:web:687e04924a9e05cae51dd2"
+  };
+  firebase.initializeApp(firebaseConfig);
+  const db = firebase.firestore();
 
-const turmaList = document.getElementById("turmaList");
-const turmaView = document.getElementById("turmaView");
-const turmaTitle = document.getElementById("turmaTitle");
-const alunosTable = document.getElementById("alunosTable");
-let turmaSelecionada = null;
-const senha = "212121";
+  const turmaList = document.getElementById("turmaList");
+  const turmaView = document.getElementById("turmaView");
+  const turmaTitle = document.getElementById("turmaTitle");
+  const alunosTable = document.getElementById("alunosTable");
 
-// === Criar Turma ===
-document.getElementById("btnNewTurma").onclick = async () => {
-  const s = prompt("Digite a senha:");
-  if(s!==senha){ alert("Senha incorreta"); return; }
-  const nome = prompt("Nome da Turma:");
-  if(!nome) return;
-  await db.collection("turmas").add({nome, createdAt: new Date().toISOString()});
-};
+  let turmaSelecionada = null;
 
-// === Adicionar Aluno ===
-document.getElementById("btnNewAluno").onclick = async () => {
-  if(!turmaSelecionada) { alert("Abra uma turma primeiro."); return; }
-  const s = prompt("Digite a senha:");
-  if(s!==senha){ alert("Senha incorreta"); return; }
-  const nome = prompt("Nome do Crismando:");
-  if(!nome) return;
-  await db.collection("alunos").add({
-    nome,
-    turmaId: turmaSelecionada.id,
-    presencas: 0,
-    faltas: 0,
-    createdAt: new Date().toISOString()
-  });
-};
+  const senha = "212121";
 
-// === Voltar ===
-document.getElementById("btnVoltar").onclick = () => {
-  turmaSelecionada = null;
-  turmaView.style.display = "none";
-};
+  // Criar Turma
+  document.getElementById("btnNewTurma").onclick = async () => {
+    const s = prompt("Digite a senha:");
+    if(s !== senha) return alert("Senha incorreta");
+    const nome = prompt("Nome da Turma:");
+    if(nome) await db.collection("turmas").add({ nome, createdAt: new Date().toISOString() });
+  };
 
-// === Listar turmas em tempo real ===
-db.collection("turmas").orderBy("createdAt","desc").onSnapshot(snapshot=>{
-  turmaList.innerHTML="";
-  snapshot.forEach(doc=>{
-    const li = document.createElement("li");
-    li.innerHTML = `<span>${doc.data().nome}</span>
-      <div>
-        <button onclick="abrirTurma('${doc.id}','${doc.data().nome}')">Abrir</button>
-        <button onclick="excluirTurma('${doc.id}')">Excluir</button>
-      </div>`;
-    turmaList.appendChild(li);
-  });
-});
-
-// === Abrir Turma ===
-function abrirTurma(id,nome){
-  turmaSelecionada = {id,nome};
-  turmaTitle.textContent = "Turma: " + nome;
-  turmaView.style.display = "block";
-
-  db.collection("alunos").where("turmaId","==",id).orderBy("nome")
-    .onSnapshot(snapshot=>{
-      alunosTable.innerHTML="";
-      snapshot.forEach(doc=>{
-        const aluno = doc.data();
-        const tr = document.createElement("tr");
-        tr.innerHTML = `
-          <td>${aluno.nome}</td>
-          <td>${aluno.presencas}</td>
-          <td>${aluno.faltas}</td>
-          <td>
-            <button class="btn-presenca" onclick="marcarPresenca('${doc.id}',${aluno.presencas})">Presença</button>
-            <button class="btn-falta" onclick="marcarFalta('${doc.id}',${aluno.faltas})">Falta</button>
-            <button onclick="removerAluno('${doc.id}')">Remover</button>
-          </td>
-        `;
-        alunosTable.appendChild(tr);
+  // Adicionar Aluno
+  document.getElementById("btnNewAluno").onclick = async () => {
+    if(!turmaSelecionada) return alert("Selecione uma turma antes");
+    const s = prompt("Digite a senha:");
+    if(s !== senha) return alert("Senha incorreta");
+    const nome = prompt("Nome do Aluno:");
+    if(nome) {
+      await db.collection("alunos").add({
+        nome,
+        presencas: 0,
+        faltas: 0,
+        turmaId: turmaSelecionada.id,
+        createdAt: new Date().toISOString()
       });
+    }
+  };
+
+  // Voltar
+  document.getElementById("btnVoltar").onclick = () => {
+    turmaSelecionada = null;
+    turmaView.style.display = "none";
+  };
+
+  // Listar turmas em tempo real
+  db.collection("turmas").orderBy("createdAt","desc").onSnapshot(snapshot => {
+    turmaList.innerHTML = "";
+    snapshot.forEach(doc => {
+      const li = document.createElement("li");
+      li.textContent = doc.data().nome;
+      li.onclick = () => abrirTurma(doc.id, doc.data().nome);
+      turmaList.appendChild(li);
     });
-}
+  });
 
-// === Funções de presença/falta/remover ===
-async function marcarPresenca(id,presencas){
-  await db.collection("alunos").doc(id).update({presencas: presencas+1});
-}
+  // Abrir Turma e listar alunos
+  function abrirTurma(id, nome){
+    turmaSelecionada = {id, nome};
+    turmaTitle.textContent = "Turma: " + nome;
+    turmaView.style.display = "block";
 
-async function marcarFalta(id,faltas){
-  await db.collection("alunos").doc(id).update({faltas: faltas+1});
-}
+    db.collection("alunos").where("turmaId","==",id).orderBy("nome")
+      .onSnapshot(snapshot => {
+        alunosTable.innerHTML = "";
+        snapshot.forEach(doc => {
+          const a = doc.data();
+          const tr = document.createElement("tr");
+          tr.innerHTML = `
+            <td>${a.nome}</td>
+            <td>${a.presencas}</td>
+            <td>${a.faltas}</td>
+            <td>
+              <button class="btn-presenca" onclick="marcarPresenca('${doc.id}', ${a.presencas})">Presença</button>
+              <button class="btn-falta" onclick="marcarFalta('${doc.id}', ${a.faltas})">Falta</button>
+              <button onclick="removerAluno('${doc.id}')">Remover</button>
+            </td>
+          `;
+          alunosTable.appendChild(tr);
+        });
+      });
+  }
 
-async function removerAluno(id){
-  const s = prompt("Digite a senha:");
-  if(s!==senha){ alert("Senha incorreta"); return; }
-  await db.collection("alunos").doc(id).delete();
-}
+  async function marcarPresenca(id, presencas){
+    await db.collection("alunos").doc(id).update({ presencas: presencas+1 });
+  }
 
-async function excluirTurma(id){
-  const s = prompt("Digite a senha:");
-  if(s!==senha){ alert("Senha incorreta"); return; }
-  // Excluir alunos da turma
-  const alunosSnap = await db.collection("alunos").where("turmaId","==",id).get();
-  alunosSnap.forEach(doc => doc.ref.delete());
-  await db.collection("turmas").doc(id).delete();
-  turmaView.style.display = "none";
-}
+  async function marcarFalta(id, faltas){
+    await db.collection("alunos").doc(id).update({ faltas: faltas+1 });
+  }
+
+  async function removerAluno(id){
+    const s = prompt("Digite a senha:");
+    if(s !== senha) return alert("Senha incorreta");
+    await db.collection("alunos").doc(id).delete();
+  }
 </script>
+
 </body>
 </html>
