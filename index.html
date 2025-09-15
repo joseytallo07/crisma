@@ -62,15 +62,19 @@ th,td { border:1px solid #ccc; padding:5px; text-align:left; }
 </main>
 
 <script>
-// === CONFIGURE FIREBASE AQUI ===
+// === FIREBASE CONFIGURADO ===
 const firebaseConfig = {
-  apiKey: "PASTE_API_KEY",
-  authDomain: "PASTE_AUTH_DOMAIN",
-  projectId: "PASTE_PROJECT_ID",
+  apiKey: "AIzaSyC4GsCM_rU8Z7MwCMNvLFtZKB5wFdIxQo",
+  authDomain: "web-crisma.firebaseapp.com",
+  projectId: "web-crisma",
+  storageBucket: "web-crisma.firebasestorage.app",
+  messagingSenderId: "153889070231",
+  appId: "1:153889070231:web:687e04924a9e05cae51dd2"
 };
 firebase.initializeApp(firebaseConfig);
 const db = firebase.firestore();
 
+// === VARIÁVEIS ===
 const senha = "212121";
 const $ = id => document.getElementById(id);
 const turmaList = $('turmaList');
@@ -82,7 +86,7 @@ const alunosTableBody = $('alunosTable').querySelector('tbody');
 const alertsDiv = $('alerts');
 let currentTurmaId = null;
 
-// CRIAR TURMA
+// === FUNÇÕES PRINCIPAIS ===
 $('btnNewTurma').onclick = async ()=>{
   const s = prompt('Senha para criar turma:');
   if(s!==senha){ alert('Senha incorreta'); return; }
@@ -92,7 +96,6 @@ $('btnNewTurma').onclick = async ()=>{
   await db.collection('turmas').add({nome, fotoURL: foto||'', createdAt: new Date().toISOString()});
 };
 
-// ADICIONAR ALUNO
 $('btnNewAluno').onclick = async ()=>{
   if(!currentTurmaId){ alert('Abra uma turma'); return; }
   const s = prompt('Senha para adicionar aluno:');
@@ -103,7 +106,6 @@ $('btnNewAluno').onclick = async ()=>{
   await db.collection('alunos').add({nome, responsavel: resp, turmaId: currentTurmaId, createdAt: new Date().toISOString()});
 };
 
-// CRIAR ENCONTRO
 $('btnNovoEncontro').onclick = async ()=>{
   if(!currentTurmaId){ alert('Abra uma turma'); return; }
   const data = prompt('Data do encontro (DD/MM/AAAA)');
@@ -113,7 +115,6 @@ $('btnNovoEncontro').onclick = async ()=>{
   await db.collection('encontros').add({turmaId: currentTurmaId, dataISO: iso, createdAt: new Date().toISOString()});
 };
 
-// ABRIR TURMA
 function openTurma(tid){
   currentTurmaId = tid;
   turmaView.style.display='block';
@@ -171,54 +172,45 @@ function openTurma(tid){
     });
 }
 
-// MARCAR PRESENÇA
 async function markPresenca(encontroId){
   const alSnap = await db.collection('alunos').where('turmaId','==',currentTurmaId).orderBy('nome').get();
   for(const a of alSnap.docs){
     const nome = a.data().nome;
     const r = prompt(`Status para ${nome} (P/F/J). Deixe em branco para P.`,'P');
-    await db.collection('presencas').add({encontroId, alunoId:a.id, status:r?r.toUpperCase():'P', createdAt:new Date().toISOString()});
+    const status = r? r.toUpperCase():'P';
+    await db.collection('presencas').add({encontroId, alunoId:a.id, status, createdAt:new Date().toISOString()});
   }
   alert('Presenças registradas.');
 }
 
-// RELATÓRIO CSV
-$('btnRelatorio').onclick = async ()=>{
-  if(!currentTurmaId){ alert('Abra uma turma'); return; }
-  const rows=[['Aluno','FaltasNãoJustificadas','FaltasJustificadas']];
-  const alSnap = await db.collection('alunos').where('turmaId','==',currentTurmaId).get();
-  for(const a of alSnap.docs){
-    const id=a.id;
-    const nome=a.data().nome;
-    const fN = (await db.collection('presencas').where('alunoId','==',id).where('status','==','F').get()).size;
-    const fJ = (await db.collection('presencas').where('alunoId','==',id).where('status','==','J').get()).size;
-    rows.push([nome,String(fN),String(fJ)]);
+// Excluir Turma
+turmaList.onclick = async e=>{
+  if(e.target.tagName==='BUTTON' && e.target.dataset.id){
+    const tid = e.target.dataset.id;
+    if(e.target.textContent==='Excluir'){
+      const s = prompt('Senha para excluir turma:');
+      if(s!==senha){ alert('Senha incorreta'); return; }
+      await db.collection('turmas').doc(tid).delete();
+      turmaView.style.display='none';
+    } else openTurma(tid);
   }
-  const csv = rows.map(r=>r.map(c=>`"${c.replace(/"/g,'""')}"`).join(',')).join('\n');
-  const blob = new Blob([csv],{type:'text/csv;charset=utf-8;'});
-  const url = URL.createObjectURL(blob);
-  const a=document.createElement('a'); a.href=url; a.download='relatorio.csv'; a.click();
 };
 
-// LISTA DE TURMAS EM TEMPO REAL
+// Listar turmas em tempo real
 db.collection('turmas').orderBy('createdAt','desc').onSnapshot(snap=>{
   turmaList.innerHTML='';
   snap.forEach(doc=>{
-    const t = doc.data();
+    const t=doc.data();
     const li=document.createElement('li');
-    li.innerHTML=`<span data-id="${doc.id}">${t.nome}</span> <button data-id="${doc.id}" class="delTurmaBtn">Excluir</button>`;
+    li.innerHTML=`<strong>${t.nome}</strong> 
+      <div>
+        <button data-id="${doc.id}">Abrir</button>
+        <button data-id="${doc.id}">Excluir</button>
+      </div>`;
     turmaList.appendChild(li);
-  });
-
-  [...document.querySelectorAll('#turmaList span')].forEach(span=>span.onclick=()=>openTurma(span.dataset.id));
-  [...document.querySelectorAll('.delTurmaBtn')].forEach(b=>{
-    b.onclick=async ()=>{
-      const s = prompt('Senha para excluir a turma:');
-      if(s!==senha){ alert('Senha incorreta'); return; }
-      await db.collection('turmas').doc(b.dataset.id).delete();
-    };
   });
 });
 </script>
+
 </body>
 </html>
