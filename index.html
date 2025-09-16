@@ -99,13 +99,25 @@ $('btnNewTurma').onclick = async ()=>{
   await db.collection('turmas').add({nome, fotoURL: foto||'', createdAt: new Date().toISOString()});
 };
 
-// === ADICIONAR ALUNO ===
+// === ADICIONAR ALUNO (corrigido) ===
 $('btnNewAluno').onclick = async () => {
-  if(!currentTurmaId){ alert('Abra uma turma'); return; }
+  if(!currentTurmaId){ 
+    alert('Abra uma turma primeiro');
+    return; 
+  }
   const s = prompt('Senha para adicionar aluno:');
-  if(s !== senha){ alert('Senha incorreta'); return; }
-  const nome = prompt('Nome do aluno');
-  if(!nome) return;
+  if(s !== senha){ 
+    alert('Senha incorreta'); 
+    return; 
+  }
+
+  let nome = prompt('Nome do aluno');
+  if(!nome || !nome.trim()){ 
+    alert("Nome inválido");
+    return; 
+  }
+  nome = nome.trim();
+
   const resp = prompt('Responsável (opcional)') || '';
   
   await db.collection('alunos').add({
@@ -115,7 +127,7 @@ $('btnNewAluno').onclick = async () => {
     createdAt: new Date().toISOString()
   });
 
-  // 🔑 força recarregar a turma imediatamente
+  // Recarregar turma
   openTurma(currentTurmaId);
 };
 
@@ -126,7 +138,7 @@ $('btnNovoEncontro').onclick = async ()=>{
   if(!data) return;
   const parts = data.split('/');
   const iso = new Date(parts[2], parts[1]-1, parts[0]).toISOString();
-  const docRef = await db.collection('encontros').add({
+  await db.collection('encontros').add({
     turmaId: currentTurmaId,
     dataISO: iso,
     createdAt: new Date().toISOString()
@@ -154,8 +166,8 @@ function openTurma(tid){
       });
     });
 
-  // Alunos em tempo real
-  db.collection('alunos').where('turmaId','==',tid).orderBy('nome')
+  // Alunos em tempo real (corrigido)
+  db.collection('alunos').where('turmaId','==',tid).orderBy('createdAt')
     .onSnapshot(snap=>{
       alunosTableBody.innerHTML='';
       snap.forEach(a=>{
@@ -179,7 +191,9 @@ function openTurma(tid){
       // Faltas e alertas
       snap.forEach(a=>{
         const alunoId = a.id;
-        db.collection('presencas').where('alunoId','==',alunoId).where('status','==','F')
+        db.collection('presencas')
+          .where('alunoId','==',alunoId)
+          .where('status','==','F')
           .onSnapshot(presSnap=>{
             const faltas = presSnap.size;
             const cell = document.querySelector(`.faltasCell[data-id='${alunoId}']`);
@@ -199,15 +213,15 @@ function openTurma(tid){
     });
 }
 
-// === RENDERIZAR PRESENÇAS ===
+// === RENDERIZAR PRESENÇAS (corrigido) ===
 function renderPresencas(encontroId, isoDate){
   const div = document.createElement('div');
   const d = new Date(isoDate);
   div.innerHTML = `<h4>Encontro ${d.toLocaleDateString()}</h4>`;
   encontrosArea.prepend(div);
 
-  // Alunos em tempo real
-  db.collection('alunos').where('turmaId','==',currentTurmaId).orderBy('nome')
+  // Alunos em tempo real (corrigido)
+  db.collection('alunos').where('turmaId','==',currentTurmaId).orderBy('createdAt')
     .onSnapshot(alunosSnap=>{
       div.innerHTML = `<h4>Encontro ${d.toLocaleDateString()}</h4>`; // limpa e recria
       alunosSnap.forEach(a=>{
