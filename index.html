@@ -12,6 +12,9 @@ body { font-family:sans-serif; margin:0; padding:0; background:#f5f5f5; }
 .card { background:white; padding:15px; margin-bottom:15px; border-radius:8px; box-shadow:0 2px 5px rgba(0,0,0,0.1); }
 .row { display:flex; gap:10px; flex-wrap:wrap; margin-bottom:10px; }
 button { padding:5px 10px; cursor:pointer; border:none; border-radius:4px; background:#3f51b5; color:white; }
+.presencaBtn { padding:5px 8px; border:none; border-radius:4px; margin-left:5px; cursor:pointer; }
+.presente { background:#4CAF50; color:white; }
+.falta { background:#f44336; color:white; }
 ul { list-style:none; padding:0; }
 li { padding:5px 0; display:flex; justify-content:space-between; align-items:center; }
 table { width:100%; border-collapse:collapse; margin-top:10px; }
@@ -37,7 +40,7 @@ th,td { border:1px solid #ccc; padding:5px; text-align:left; }
       <div class="row">
         <button id="btnNewTurma">Criar Turma</button>
         <button id="btnNewAluno">Adicionar Crismando</button>
-        <button id="btnNovoEncontro">Registrar encontro </button>
+        <button id="btnNovoEncontro">Registrar Encontro</button>
         <button id="btnRelatorio">Relatórios (CSV)</button>
       </div>
       <div id="alerts"></div>
@@ -122,8 +125,48 @@ $('btnNovoEncontro').onclick = async ()=>{
   if(!data) return;
   const parts = data.split('/');
   const iso = new Date(parts[2], parts[1]-1, parts[0]).toISOString();
-  await db.collection('encontros').add({turmaId: currentTurmaId, dataISO: iso, createdAt: new Date().toISOString()});
+  const encontroRef = await db.collection('encontros').add({
+    turmaId: currentTurmaId,
+    dataISO: iso,
+    createdAt: new Date().toISOString()
+  });
+
+  // Cria área para registrar presenças
+  renderPresencas(encontroRef.id, iso);
 };
+
+// === RENDERIZAR PRESENÇAS ===
+async function renderPresencas(encontroId, isoDate){
+  const alunosSnap = await db.collection('alunos').where('turmaId','==',currentTurmaId).orderBy('nome').get();
+  const div = document.createElement('div');
+  const d = new Date(isoDate);
+  div.innerHTML = `<h4>Encontro ${d.toLocaleDateString()}</h4>`;
+  alunosSnap.forEach(a=>{
+    const aluno = a.data();
+    const linha = document.createElement('div');
+    linha.innerHTML = `
+      ${aluno.nome}
+      <button class="presencaBtn presente" data-encontro="${encontroId}" data-aluno="${a.id}" data-status="P">✔</button>
+      <button class="presencaBtn falta" data-encontro="${encontroId}" data-aluno="${a.id}" data-status="F">✖</button>
+    `;
+    div.appendChild(linha);
+  });
+  encontrosArea.prepend(div);
+
+  // Eventos nos botões
+  [...div.querySelectorAll('.presencaBtn')].forEach(btn=>{
+    btn.onclick = async ()=>{
+      const {encontro, aluno, status} = btn.dataset;
+      await db.collection('presencas').add({
+        encontroId: encontro,
+        alunoId: aluno,
+        status,
+        createdAt:new Date().toISOString()
+      });
+      alert(`Marcado ${status==="P"?"Presente":"Falta"} para aluno.`);
+    };
+  });
+}
 
 // === ABRIR TURMA ===
 function openTurma(tid){
@@ -139,27 +182,21 @@ function openTurma(tid){
 
   // Encontros
   db.collection('encontros').where('turmaId','==',tid).orderBy('dataISO','desc')
-    .onSnapshot(snap=>{
+    .onSnapshot(async snap=>{
       encontrosArea.innerHTML='';
-      snap.forEach(ed=>{
-        const d = new Date(ed.data().dataISO);
-        const div = document.createElement('div');
-        div.innerHTML=`<strong>${d.toLocaleDateString()}</strong> <button data-id="${ed.id}" class="markBtn">Marcar presença</button>`;
-        encontrosArea.appendChild(div);
-      });
-      [...document.querySelectorAll('.markBtn')].forEach(b=>b.onclick=()=>markPresenca(b.dataset.id));
+      for(const ed of snap.docs){
+        await renderPresencas(ed.id, ed.data().dataISO);
+      }
     });
 
-  // === LISTAR ALUNOS (SEM orderBy) ===
-  db.collection('alunos').where('turmaId','==',tid)
+  // Alunos
+  db.collection('alunos').where('turmaId','==',tid).orderBy('nome')
     .onSnapshot(snap=>{
       alunosTableBody.innerHTML='';
       snap.forEach(a=>{
         const data = a.data();
         const tr = document.createElement('tr');
-        tr.innerHTML=`<td>${data.nome}</td>
-                      <td class="faltasCell" data-id="${a.id}">0</td>
-                      <td><button data-id="${a.id}" class="delAlunoBtn">Excluir</button></td>`;
+        tr.innerHTML=`<td>${data.nome}</td><td class="faltasCell" data-id="${a.id}">0</td><td><button data-id="${a.id}" class="delAlunoBtn">Excluir</button></td>`;
         alunosTableBody.appendChild(tr);
       });
 
@@ -182,29 +219,12 @@ function openTurma(tid){
             if(cell) cell.textContent = faltas;
             let div = alertsDiv.querySelector(`.alert[data-id='${alunoId}']`);
             if(faltas>=4){
-              if(!div){ 
-                div=document.createElement('div'); 
-                div.className='alert warn'; 
-                div.dataset.id=alunoId; 
-                alertsDiv.appendChild(div);
-              }
+              if(!div){ div=document.createElement('div'); div.className='alert warn'; div.dataset.id=alunoId; alertsDiv.appendChild(div);}
               div.innerHTML=`<strong>Atenção:</strong> ${a.data().nome} tem ${faltas} faltas.`;
             } else if(div){ div.remove(); }
           });
       });
     });
-}
-
-// === MARCAR PRESENÇA ===
-async function markPresenca(encontroId){
-  const alSnap = await db.collection('alunos').where('turmaId','==',currentTurmaId).get();
-  for(const a of alSnap.docs){
-    const nome = a.data().nome;
-    const r = prompt(`Status para ${nome} (P/F/J). Deixe em branco para P.`,'P');
-    const status = r? r.toUpperCase():'P';
-    await db.collection('presencas').add({encontroId, alunoId:a.id, status, createdAt:new Date().toISOString()});
-  }
-  alert('Presenças registradas.');
 }
 
 // === EXCLUIR TURMA ===
