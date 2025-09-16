@@ -114,6 +114,9 @@ $('btnNewAluno').onclick = async () => {
     turmaId: currentTurmaId,
     createdAt: new Date().toISOString()
   });
+
+  // 🔑 força recarregar a turma imediatamente
+  openTurma(currentTurmaId);
 };
 
 // === CRIAR ENCONTRO ===
