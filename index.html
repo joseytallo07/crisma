@@ -96,10 +96,14 @@ $('btnNewTurma').onclick = async ()=>{
   const nome = prompt('Nome da turma');
   if(!nome) return;
   const foto = prompt('URL da foto da turma (opcional)');
-  await db.collection('turmas').add({nome, fotoURL: foto||'', createdAt: new Date().toISOString()});
+  await db.collection('turmas').add({
+    nome, 
+    fotoURL: foto||'', 
+    createdAt: firebase.firestore.FieldValue.serverTimestamp()
+  });
 };
 
-// === ADICIONAR ALUNO (corrigido) ===
+// === ADICIONAR ALUNO ===
 $('btnNewAluno').onclick = async () => {
   if(!currentTurmaId){ 
     alert('Abra uma turma primeiro');
@@ -124,7 +128,7 @@ $('btnNewAluno').onclick = async () => {
     nome,
     responsavel: resp,
     turmaId: currentTurmaId,
-    createdAt: new Date().toISOString()
+    createdAt: firebase.firestore.FieldValue.serverTimestamp()
   });
 
   // Recarregar turma
@@ -141,7 +145,7 @@ $('btnNovoEncontro').onclick = async ()=>{
   await db.collection('encontros').add({
     turmaId: currentTurmaId,
     dataISO: iso,
-    createdAt: new Date().toISOString()
+    createdAt: firebase.firestore.FieldValue.serverTimestamp()
   });
 };
 
@@ -166,7 +170,7 @@ function openTurma(tid){
       });
     });
 
-  // Alunos em tempo real (corrigido)
+  // Alunos em tempo real
   db.collection('alunos').where('turmaId','==',tid).orderBy('createdAt')
     .onSnapshot(snap=>{
       alunosTableBody.innerHTML='';
@@ -213,17 +217,16 @@ function openTurma(tid){
     });
 }
 
-// === RENDERIZAR PRESENÇAS (corrigido) ===
+// === RENDERIZAR PRESENÇAS ===
 function renderPresencas(encontroId, isoDate){
   const div = document.createElement('div');
   const d = new Date(isoDate);
   div.innerHTML = `<h4>Encontro ${d.toLocaleDateString()}</h4>`;
   encontrosArea.prepend(div);
 
-  // Alunos em tempo real (corrigido)
   db.collection('alunos').where('turmaId','==',currentTurmaId).orderBy('createdAt')
     .onSnapshot(alunosSnap=>{
-      div.innerHTML = `<h4>Encontro ${d.toLocaleDateString()}</h4>`; // limpa e recria
+      div.innerHTML = `<h4>Encontro ${d.toLocaleDateString()}</h4>`;
       alunosSnap.forEach(a=>{
         const aluno = a.data();
         const linha = document.createElement('div');
@@ -239,12 +242,13 @@ function renderPresencas(encontroId, isoDate){
       [...div.querySelectorAll('.presencaBtn')].forEach(btn=>{
         btn.onclick = async ()=>{
           const {encontro, aluno, status} = btn.dataset;
-          await db.collection('presencas').add({
+          const ref = db.collection('presencas').doc(`${encontro}_${aluno}`);
+          await ref.set({
             encontroId: encontro,
             alunoId: aluno,
             status,
-            createdAt:new Date().toISOString()
-          });
+            createdAt: firebase.firestore.FieldValue.serverTimestamp()
+          }, { merge: true });
         };
       });
     });
@@ -277,6 +281,27 @@ db.collection('turmas').orderBy('createdAt','desc').onSnapshot(snap=>{
     turmaList.appendChild(li);
   });
 });
+
+// === RELATÓRIO CSV ===
+$('btnRelatorio').onclick = async ()=>{
+  if(!currentTurmaId){ alert('Abra uma turma primeiro'); return; }
+  const alunosSnap = await db.collection('alunos').where('turmaId','==',currentTurmaId).get();
+  let csv = "Nome,Faltas\n";
+  for(const doc of alunosSnap.docs){
+    const aluno = doc.data();
+    const presSnap = await db.collection('presencas')
+      .where('alunoId','==',doc.id)
+      .where('status','==','F')
+      .get();
+    csv += `"${aluno.nome}",${presSnap.size}\n`;
+  }
+  const blob = new Blob([csv], {type: 'text/csv'});
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = 'relatorio.csv';
+  a.click();
+};
 </script>
 
 </body>
